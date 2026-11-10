@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link rel="stylesheet" href="/css/estilos.css">
+</head>
+<body>
+    
+    <header>
+        <div class="contenedor">
+            <h1>Reservas de salas de estudio</h1>
+
+            <nav> 
+                <a href="/">Inicio</a>
+                <a href="/reservas">Reservas</a>
+                <a href="/reservas/nueva">Nueva reserva</a>
+                <a href="/estado">Estado</a>
+            </nav>
+        </div>
+    </header>
+
+    <main> 
+        <%- body %>
+    </main>
+
+    <footer>
+        <div class="contenedor">
+            <p>
+                &copy; 2026 - Reservas de salas de estudio
+            </p>
+
+            <samall> 
+                solicitud: <%= solicitudId %> 
+            </samall>
+        </div>
+    </footer>
+
+</body>
+</html>
