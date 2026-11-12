@@ -1,164 +1,117 @@
-# TP 09 - Actualización y eliminación de reservas de salas
+# TP 10 - Consultas de Reservas Paso a Paso (MongoDB + Express)
 
-## 1. Origen y Mantenimiento
-- **Origen:** Copia funcional individual del TP 08 (`tp-08-salas-http-mongodb`).
-- **Versiones de entorno:** Node.js v22.x, Express v5.0, Mongoose v8.x.
-- **Transición a CRUD completo:** Se añadieron operaciones de reemplazo total (PUT), modificación parcial (PATCH) y eliminación física (DELETE), integrando los nuevos métodos HTTP a la API JSON, interactuando asíncronamente con MongoDB Atlas y manteniendo el sitio web.
+API REST y aplicación web con vistas EJS para la gestión de reservas de salas de estudio, incorporando filtrado exacto, ordenamiento con desempate, paginación y proyección de campos sobre MongoDB Atlas.
 
-## 2. Configuración y Base de Datos
-- **Entorno Atlas:** Clúster Gratuito MongoDB Atlas Free (M0).
-- **Base de datos:** `reservas_salas_u9`
-- **Colección:** `reservas`
+---
 
-### Plantilla de entorno (`.env.example`)
+## 1. Instalación y Ejecución
+
+1. Clonar el repositorio e instalar dependencias exactas desde el lockfile:
+   ```bash
+   npm ci
+   ```
+2. Configurar las variables de entorno tomando como base `.env.example` y crear un archivo `.env` privado con la URI de MongoDB Atlas.
+3. Verificar sintaxis y conexión antes de iniciar el servidor:
+   ```bash
+   npm run check
+   node --env-file=.env scripts/comprobar-conexion.js
+   ```
+4. Iniciar la aplicación:
+   ```bash
+   node --env-file=.env src/index.js
+   ```
+
+---
+
+## 2. Variables de Entorno (`.env.example`)
+
+El proyecto utiliza las siguientes variables configuradas en `.env` (sin incluir credenciales ni secretos en el repositorio):
+
+```env
 PORT=3000
-NODE_ENV=development
-MONGODB_URI=mongodb+srv://USUARIO:CLAVE@HOST/reservas_salas_u9?retryWrites=true&w=majority
+MONGODB_URI=mongodb+srv://<usuario>:<password>@<cluster>.mongodb.net/reservas_salas_u10?retryWrites=true&w=majority
+```
 
-### Comando de inicio
-node --env-file=.env src/index.js
+---
 
-## 3. Diagnóstico DNS y Cierre Ordenado (*Graceful Shutdown*)
-- **Ajuste DNS:** Se mantiene la resolución DNS mediante `dns.setServers(["8.8.8.8", "1.1.1.1"])` en `src/config/base-datos.js` para asegurar la conectividad con los registros SRV de MongoDB Atlas.
-- **Conexión previa:** El servidor espera a establecer la conexión con MongoDB Atlas antes de escuchar peticiones en el puerto.
-- **Cierre ordenado:** El proceso escucha las señales `SIGINT` y `SIGTERM` para finalizar el servidor HTTP y desconectar Mongoose de forma limpia antes de salir.
+## 3. Contrato Final de la API
 
-## 4. Arquitectura y Estructura por Capas
+### Listado con Consultas: `GET /api/reservas`
+Devuelve un objeto paginado sin modificar los documentos almacenados en la base de datos.
 
-tp-09-salas-crud-mongodb/
-├── src/
-│   ├── config/
-│   │   ├── entorno.js         # Lectura de variables de entorno
-│   │   └── base-datos.js      # Conexión asíncrona a Atlas y DNS
-│   ├── modelos/
-│   │   └── reserva.js         # Esquema Mongoose con 6 campos + estado (default pendiente)
-│   ├── servicios/
-│   │   └── reservas.js        # Operaciones asíncronas Mongoose (CRUD Completo)
-│   ├── controladores/
-│   │   ├── reservas.js        # Renderizado de vistas HTML (EJS)
-│   │   └── api-reservas.js    # Respuestas REST JSON (Validaciones PUT/PATCH)
-│   ├── rutas/
-│   │   ├── reservas.js        # Router para el sitio web
-│   │   └── api-reservas.js    # Router para la API REST JSON (GET, POST, PUT, PATCH, DELETE)
-│   ├── utils/
-│   │   └── formatear.js       # Formateador de _id a id textual
-│   ├── middleware/
-│   │   ├── reservas.js        # Validaciones
-│   │   └── solicitudes.js     # Logger de peticiones
-│   ├── app.js                 # Integración Express y middleware global de errores
-│   └── index.js               # Conexión asíncrona, listen y Graceful Shutdown
-├── views/                     # Plantillas EJS del sitio web
-├── public/                    # Archivos estáticos (CSS)
-├── .env.example
-├── .gitignore
-├── eslint.config.js
-├── package.json
-├── package-lock.json
-└── README.md
+**Parámetros de consulta (`Query Params`) aceptados:**
+* `sala` *(opcional)*: Texto exacto tras aplicar `.trim()` (ej. `Sala Norte`). Si no hay coincidencias, devuelve `200 OK` con `datos: []`.
+* `orden` *(opcional)*: Criterio de ordenamiento. Valores permitidos:
+  * `estudiante` *(predeterminado)*: Alfabético ascendente + desempate por `_id` ascendente.
+  * `personas-asc`: Cantidad de personas ascendente + desempate por `_id` ascendente.
+  * `personas-desc`: Cantidad de personas descendente + desempate por `_id` ascendente.
+* `pagina` *(opcional)*: Número entero entre `1` y `1000` (predeterminado: `1`).
+* `limite` *(opcional)*: Número entero entre `1` y `20` (predeterminado: `2`).
 
-## 5. Esquema y Modelo de Datos
+**Proyección de campos:** La consulta selecciona explícitamente los campos públicos (`estudiante`, `email`, `sala`, `fecha`, `turno`, `personas`, `estado`) y conserva `_id` internamente para construir `id`, sin exponer `_id` ni `__v`.
 
-El modelo de Mongoose exige que todos los campos del cliente sean **obligatorios** (requeridos) al crear (POST) o reemplazar (PUT). Las reglas aplicadas son:
-
-- **`estudiante`** (`String`): Se aplica limpieza de espacios en los extremos (`trim`).
-- **`email`** (`String`): Se aplica `trim` y se exige la presencia obligatoria del carácter `@`.
-- **`sala`** (`String`): Limitado mediante `enum` estrictamente a: `"Sala Norte"`, `"Sala Sur"`, `"Sala Multimedia"`.
-- **`fecha`** (`String`): Se aplica limpieza de espacios (`trim`).
-- **`turno`** (`String`): Limitado mediante `enum` estrictamente a: `"Mañana"`, `"Tarde"`, `"Noche"`.
-- **`personas`** (`Number`): Validado internamente como entero puro (`Number.isInteger`) y delimitado a un rango permitido (Mínimo `1`, Máximo `6`).
-- **`estado`** (`String`): Valor por defecto: `"pendiente"`. Limitado mediante `enum` a `"pendiente"` o `"confirmada"`.
-
-## 6. Tabla de Endpoints API
-
-### Operaciones de Lectura (GET)
-- **`GET /api/reservas`**
-  Obtiene el listado completo de reservas directamente desde MongoDB Atlas. *(Respuesta esperada: 200 OK)*
-- **`GET /api/reservas?sala=Nombre%20De%20Sala`**
-  Filtra la colección y devuelve un arreglo con las reservas que coincidan de forma exacta con la sala. *(Respuesta esperada: 200 OK)*
-- **`GET /api/reservas/:id`**
-  Busca un documento específico por su ID. *(Respuestas posibles: 200 OK, 400 Bad Request para formato inválido, 404 Not Found si no existe)*
-- **`GET /estado`**
-  Ruta de diagnóstico (*health check*) que realiza un conteo asíncrono real en la colección y devuelve el total de documentos. *(Respuesta esperada: 200 OK)*
-
-### Operaciones de Creación (POST)
-- **`POST /api/reservas`**
-  Crea una nueva reserva. Recibe el payload en JSON, valida las reglas del esquema, asigna un estado, y guarda el registro de manera persistente. El cliente no puede asignar `estado` ni `_id`. Devuelve la ruta del nuevo recurso. *(Respuesta esperada: 201 Created y cabecera Location)*
-
-### Operaciones de Actualización (PUT y PATCH)
-- **`PUT /api/reservas/:id`**
-  Reemplazo completo. Exige el envío de los **7 campos** editables (incluyendo `estado`) y ningún campo extra. La actualización persiste en Atlas. *(Respuesta esperada: 200 OK, 400 Bad Request si faltan/sobran campos o 404 Not Found)*
-- **`PATCH /api/reservas/:id`**
-  Modificación parcial. Admite únicamente los campos **`personas`** y/o **`estado`**. Los demás campos se conservan intactos. *(Respuesta esperada: 200 OK, 400 Bad Request si el cuerpo está vacío o incluye campos no admitidos o 404 Not Found)*
-
-### Operaciones de Eliminación (DELETE)
-- **`DELETE /api/reservas/:id`**
-  Borrado físico. Elimina el documento permanentemente de MongoDB Atlas utilizando `findByIdAndDelete`. *(Respuesta esperada: 204 No Content sin cuerpo, 400 Bad Request para formato inválido, 404 Not Found)*
-
-## 7. Ejemplo de Solicitud y Respuesta JSON
-
-### Solicitud PUT (`/api/reservas/:id`)
-- **Headers:** `Content-Type: application/json`
-- **Cuerpo:**
+**Respuesta Exitosa (`200 OK`):**
+```json
 {
-  "estudiante": "Ana Ejemplo",
-  "email": "ana@example.com",
-  "sala": "Sala Norte",
-  "fecha": "2026-10-28",
-  "turno": "Mañana",
-  "personas": 2,
-  "estado": "confirmada"
+  "datos": [
+    {
+      "id": "6af294aac22bd40b7d8170f6",
+      "estudiante": "Ana Ejemplo",
+      "email": "ana@example.com",
+      "sala": "Sala Norte",
+      "fecha": "2026-10-28",
+      "turno": "Mañana",
+      "personas": 2,
+      "estado": "pendiente"
+    }
+  ],
+  "pagina": 1,
+  "limite": 2,
+  "total": 4,
+  "paginas": 2
 }
+```
 
-### Respuesta PUT (`200 OK`)
-- **Headers de respuesta:** `Content-Type: application/json`
-- **Cuerpo:**
-{
-  "id": "671e8a2b3f123456789abcde",
-  "estudiante": "Ana Ejemplo",
-  "email": "ana@example.com",
-  "sala": "Sala Norte",
-  "fecha": "2026-10-28",
-  "turno": "Mañana",
-  "personas": 2,
-  "estado": "confirmada"
-}
+**Respuestas de Error (`400 Bad Request`):**
+Se rechaza con `400` cualquier parámetro desconocido en la URL (ej. `select`, `otro`), parámetros repetidos (ej. `pagina=1&pagina=2`), `sala` vacía, `orden` fuera de los 3 valores permitidos, o `pagina`/`limite` no enteros o fuera de rango.
 
-## 8. Instrucciones para Reproducir en Postman
+### Endpoints Heredados (CRUD y Vistas Web)
+* `GET /api/reservas/:id` — Devuelve el detalle público de una reserva (`200 OK`), formato de ID inválido (`400`) o no encontrada (`404`).
+* `POST /api/reservas` — Crea una reserva (`201 Created` + cabecera `Location`).
+* `PUT /api/reservas/:id` — Reemplazo completo de los 7 campos editables (`200 OK`).
+* `PATCH /api/reservas/:id` — Modificación parcial de `personas` o `estado` (`200 OK`).
+* `DELETE /api/reservas/:id` — Eliminación de reserva (`204 No Content`).
+* **Vistas HTML y Monitoreo:** `GET /reservas`, `GET /reservas/nueva`, `POST /reservas`, `GET /reservas/:id` y `GET /estado` mantienen su comportamiento original sin cambios de interfaz.
 
-1. **Crear una identidad:** `POST http://localhost:3000/api/reservas` con datos ficticios. Registrar `201 Created`, ID y Location en Headers.
-2. **Reemplazar completo:** `PUT http://localhost:3000/api/reservas/ID_RECIBIDO`, enviando los seis campos originales y `estado: confirmada`. Esperar `200 OK` con los siete valores. Omitir un campo debe dar `400 Bad Request`.
-3. **Modificar parcial:** `PATCH http://localhost:3000/api/reservas/ID_RECIBIDO` enviando solo `{"personas": 3}` o `{"estado": "pendiente"}`. Esperar `200 OK` con el campo actualizado y los demás conservados.
-4. **Eliminar objetivo:** `DELETE http://localhost:3000/api/reservas/ID_RECIBIDO`. Esperar `204 No Content` con cuerpo vacío.
-5. **Verificar eliminación:** Consultar `GET http://localhost:3000/api/reservas/ID_RECIBIDO` y esperar `404 Not Found`. Verificar que el arreglo de listado tenga una reserva menos.
-6. **Prueba de persistencia tras reinicio:** 
-   - Actualizar una reserva.
-   - Eliminar otro documento.
-   - Detener el servidor con `Ctrl + C`.
-   - Iniciar con `node --env-file=.env src/index.js`.
-   - Consultar ID actualizado (conserva estado posterior) e ID eliminado (sigue ausente).
+---
 
-## 9. Matriz Mínima de Resultados
+## 4. Solicitudes Reproducibles en Postman y Matriz de Resultados
 
-### Pruebas de Éxito y Persistencia (Happy Path)
-- **POST válido:** Se esperaba `201 Created`, Location y estado pendiente. **Resultado:** `201 Created`, Location asignada correctamente y estado inicial `"pendiente"`.
-- **PUT completo:** Se esperaba `200 OK`, mismo ID y los siete campos actualizados. **Resultado:** `200 OK`, devuelve la reserva con los datos sustituidos al 100%.
-- **PATCH válido (`personas` o `estado`):** Se esperaba `200 OK` y campos omitidos conservados. **Resultado:** `200 OK`, actualiza únicamente el campo indicado sin alterar el resto.
-- **DELETE existente:** Se esperaba `204 No Content` sin cuerpo y un documento menos. **Resultado:** `204 No Content` (cuerpo vacío) y el listado de `/api/reservas` refleja una reserva menos.
-- **Prueba tras reiniciar servidor:** Se esperaba que los cambios y borrados persistan. **Resultado:** Los documentos actualizados conservan sus valores y los eliminados siguen ausentes (lectura real desde Atlas).
-- **Sitio, formulario y `/estado`:** Se esperaba mantener los contratos. **Resultado:** Vistas EJS operativas y la ruta `/estado` sigue reflejando el total real de MongoDB.
+La colección exportada se encuentra adjunta en el repositorio (`TP 10 - Reservas.postman_collection.json`).
 
-### Pruebas de Rechazo y Errores (400 / 404 / 500)
-- **ID mal formado:** Se esperaba `400 Bad Request`. **Resultado:** `400 Bad Request`.
-- **ID válido ausente en PUT/PATCH:** Se esperaba `404 Not Found` sin creación accidental (`upsert: false`). **Resultado:** `404 Not Found`.
-- **PUT incompleto (faltan campos):** Se esperaba `400 Bad Request` y recurso intacto. **Resultado:** `400 Bad Request`, sin escrituras en BD.
-- **PATCH vacío, campo extra, `_id` o `$set`:** Se esperaba `400 Bad Request` sin modificación. **Resultado:** `400 Bad Request`.
-- **Campo `personas` inválido (0, 7, 2.5, true, arreglo, objeto):** Se esperaba `400 Bad Request` sin modificación. **Resultado:** `400 Bad Request`.
-- **Campo `estado` o enum inválido:** Se esperaba `400 Bad Request` sin modificación. **Resultado:** `400 Bad Request`.
-- **JSON mal formado o cuerpo ausente:** Se esperaba `400 Bad Request`. **Resultado:** `400 Bad Request`.
-- **Repetir DELETE / GET posterior a un borrado:** Se esperaba `404 Not Found`. **Resultado:** `404 Not Found`.
-- **Fallo inesperado simulado:** Se esperaba `500 Internal Server Error` sin exponer secretos. **Resultado:** `500 Internal Server Error` con JSON seguro.
+### Carga Inicial (6 documentos en `reservas_salas_u10`, colección `reservas`)
+Se crearon 6 reservas mediante solicitudes `POST /api/reservas` individuales (todas con fecha `2026-10-28`, turno `Mañana` y estado inicial `pendiente`):
+1. **Ana Ejemplo** (`ana@example.com` | `Sala Norte` | 2 personas) — ID: `6af294aac22bd40b7d8170f6`
+2. **Bruno Ejemplo** (`bruno@example.com` | `Sala Norte` | 1 persona) — ID: `6af294bfc22bd40b7d8170f7`
+3. **Carla Ejemplo** (`carla@example.com` | `Sala Norte` | 2 personas) — ID: `6af294d0c22bd40b7d8170f8`
+4. **Diego Ejemplo** (`diego@example.com` | `Sala Norte` | 3 personas) — ID: `6af294e5c22bd40b7d8170f9`
+5. **Elena Ejemplo** (`elena@example.com` | `Sala Sur` | 1 persona) — ID: `6af294f1c22bd40b7d8170fa`
+6. **Fabian Ejemplo** (`fabian@example.com` | `Sala Multimedia` | 4 personas) — ID: `6af29504c22bd40b7d8170fb`
 
-## 10. Comparación con el TP 08
-- **CRUD Completo:** El TP 08 establecía la persistencia en Atlas limitándose a operaciones de creación y lectura. El TP 09 incorpora operaciones completas de actualización (reemplazo estricto en PUT y modificación parcial restrictiva en PATCH) y borrado físico permanente.
-- **Operadores y Validaciones Mongoose:** Se configuraron validaciones rigurosas en la actualización activando `runValidators:true` y gestionando manualmente el operador `$set` en el PATCH. Se incorporó `findByIdAndDelete` para asegurar la eliminación definitiva de los documentos, abandonando la respuesta al cliente sin persistencia.
-- **Desuso de `new:true` y adopción de estándares modernos:** Se corrigieron advertencias de Mongoose reemplazando opciones de retorno obsoletas para garantizar compatibilidad con versiones superiores de MongoDB y su driver nativo.
+### Matriz de Pruebas (`GET /api/reservas`)
+* **Sin parámetros (`GET /api/reservas`):** `200 OK` — Devuelve 2 reservas (Ana `6af294aac22bd40b7d8170f6` y Bruno `6af294bfc22bd40b7d8170f7`), `pagina: 1`, `limite: 2`, `total: 6`, `paginas: 3`.
+* **Filtro + Orden + Página 1 (`?sala=Sala Norte&orden=personas-asc&pagina=1&limite=2`):** `200 OK` — Devuelve 2 reservas ordenadas ascendentemente: Bruno (`6af294bfc22bd40b7d8170f7`, 1 persona) y Ana (`6af294aac22bd40b7d8170f6`, 2 personas), `total: 4`, `paginas: 2`.
+* **Cambio a Página 2 (`?sala=Sala Norte&orden=personas-asc&pagina=2&limite=2`):** `200 OK` — Devuelve las 2 reservas restantes: Carla (`6af294d0c22bd40b7d8170f8`, 2 personas, desempatada por `_id` tras Ana) y Diego (`6af294e5c22bd40b7d8170f9`, 3 personas), manteniendo `total: 4` y `paginas: 2`.
+* **Orden descendente (`?sala=Sala Norte&orden=personas-desc&pagina=1&limite=2`):** `200 OK` — Devuelve Diego (`6af294e5c22bd40b7d8170f9`, 3 personas) y Ana (`6af294aac22bd40b7d8170f6`, 2 personas), conservando exactamente los mismos IDs.
+* **Página fuera de rango (`?sala=Sala Norte&pagina=3&limite=2`):** `200 OK` — Devuelve `datos: []`, `pagina: 3`, `limite: 2`, `total: 4`, `paginas: 2` (sin error 404).
+* **Sala inexistente (`?sala=Sala Inexistente`):** `200 OK` — Devuelve `datos: []`, `pagina: 1`, `limite: 2`, `total: 0`, `paginas: 0`.
+* **Rechazos de validación (`400 Bad Request`):** Comprobado individualmente con `pagina=0`, `pagina=1.5`, `limite=21`, `pagina=1&pagina=2`, `sala=`, `sala=Sala Norte&sala=Sala Sur`, `orden=otro` y `select=email`. Ningún rechazo generó escrituras en Atlas (se conservaron los 6 documentos).
+* **Continuidad y reinicio:** Tras detener el servidor (`Ctrl + C`) y volver a iniciarlo, `GET /api/reservas/6af294aac22bd40b7d8170f6` respondió `200 OK` con los datos de Ana Ejemplo intactos y `/estado` reflejó el total real de 6 documentos.
+
+---
+
+## 5. Decisión de Diseño: Modelado de Salas y Reservas
+
+Si incorporáramos información propia de las salas al sistema, **una sala** se describiría con atributos estructurales y relativamente estables: `nombre` (único), `capacidadMaxima`, `ubicacion` (piso o sector), `equipamiento` (ej. proyector, pizarra, sistema de audio) y `habilitada` (booleano para disponibilidad o mantenimiento). En cambio, **una reserva** describiría los datos transaccionales del evento puntual: `estudiante`, `email`, `fecha`, `turno`, `personas`, `estado` y la vinculación con la sala elegida.
+
+Para relacionar ambas entidades, **utilizar una referencia (`ObjectId` de la sala dentro de la reserva)** tendría sentido para evitar la duplicación de datos y mantener la integridad: si cambia la capacidad máxima o el equipamiento de "Sala Norte", se actualiza en un único documento de la colección `salas` sin alterar las reservas existentes. Por otro lado, **embeber ciertos datos resumidos** (como el `nombre` de la sala) evitaría realizar consultas cruzadas (`populate` o `$lookup`) en cada listado paginado y conservaría una foto histórica del nombre con el que el estudiante realizó la reserva.

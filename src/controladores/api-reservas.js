@@ -4,20 +4,64 @@ const { formatearReserva } = require("../utils/formatear");
 function crearControladorApiReservas(servicioReserva) {
   async function listar(req, res, next) {
     try {
-      if (Array.isArray(req.query.sala)) {
-        return res.status(400).json({
-          error: "El parámetro de filtro 'sala' no puede estar repetido.",
-        });
+      const permitidos = ["sala", "orden", "pagina", "limite"];
+      const { sala, orden, pagina, limite } = req.query;
+      const recibidos = Object.keys(req.query);
+      const extras = recibidos.filter((param) => !permitidos.includes(param));
+
+      if (extras.length > 0) {
+        return res.status(400).json({ error: "Parámetros desconocidos en la URL." });
       }
 
-      const filtro = {};
-      if (req.query.sala) {
-        filtro.sala = req.query.sala;
+      if (sala !== undefined) {
+        if (Array.isArray(sala)) {
+          return res.status(400).json({ error: "El filtro de sala no puede estar repetido." });
+        }
+        const salaLimpia = sala.trim();
+        if (salaLimpia === "") {
+          return res.status(400).json({ error: "El nombre de la sala no puede estar vacío." });
+        }
       }
 
-      const reservas = await servicioReserva.listar(filtro);
-      const resultado = reservas.map(formatearReserva);
-      return res.status(200).json(resultado);
+      let ordenLimpio;
+      if (orden !== undefined) {
+        if (Array.isArray(orden)) {
+          return res.status(400).json({ error: "El parámetro orden no puede estar repetido." });
+        }
+
+        ordenLimpio = orden.trim();
+        const ordenesPermitidos = ["estudiante", "personas-asc", "personas-desc"];
+
+        if (!ordenesPermitidos.includes(ordenLimpio)) {
+          return res.status(400).json({ error: "Orden desconocido. Use: estudiante, personas-asc o personas-desc." });
+        }
+      }
+
+      let numPagina = 1;
+      if (pagina !== undefined) {
+        if (Array.isArray(pagina)) {
+          return res.status(400).json({ error: "El parámetro pagina no puede estar repetido." });
+        }
+        numPagina = Number(pagina);
+        if (!Number.isInteger(numPagina) || numPagina < 1 || numPagina > 1000) {
+          return res.status(400).json({ error: "El parámetro pagina debe ser un número entero entre 1 y 1000." });
+        }
+      }
+
+      let numLimite = 2;
+      if (limite !== undefined) {
+        if (Array.isArray(limite)) {
+          return res.status(400).json({ error: "El parámetro limite no puede estar repetido." });
+        }
+        numLimite = Number(limite);
+        if (!Number.isInteger(numLimite) || numLimite < 1 || numLimite > 20) {
+          return res.status(400).json({ error: "El parámetro limite debe ser un número entero entre 1 y 20." });
+        }
+      }
+
+      const respuesta = await servicioReserva.consultar(sala, ordenLimpio, numPagina, numLimite);
+
+      return res.status(200).json(respuesta);
     } catch (error) {
       next(error);
     }

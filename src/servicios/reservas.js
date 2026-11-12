@@ -11,6 +11,54 @@ function crearServicioReservas() {
     return await Reserva.find(criterio);
   }
 
+  async function consultar(sala, orden = "estudiante", pagina = 1, limite = 2) {
+    const filtro = {};
+
+    if(sala) {
+      filtro.sala = sala.trim(); 
+    }
+    let criterioOrden = {};
+    if (orden === "personas-asc") {
+      criterioOrden = { personas: 1, _id: 1 }; 
+    } else if (orden === "personas-desc") {
+      criterioOrden = { personas: -1, _id: 1};
+    }else {
+      criterioOrden = { estudiante: 1, _id: 1};
+    }
+
+    const salto = (pagina - 1) * limite;
+
+    const total = await Reserva.countDocuments(filtro);
+
+    const reservas = await Reserva.find(filtro)
+    .select("estudiante email sala fecha turno personas estado")
+    .sort(criterioOrden)
+    .skip(salto)
+    .limit(limite)
+    .lean();
+
+    const datosMapeados = reservas.map((reserva) => ({
+      id: reserva._id,
+      estudiante: reserva.estudiante,
+      email: reserva.email,
+      sala: reserva.sala,
+      fecha: reserva.fecha,
+      turno: reserva.turno,
+      personas: reserva.personas,
+      estado: reserva.estado,
+    }));
+
+    const paginas = Math.ceil(total / limite);
+
+    return {
+      datos: datosMapeados,
+      pagina: pagina,
+      limite: limite,
+      total: total,
+      paginas: paginas
+    };
+  }
+
   async function obtenerPorId(id) {
     return await Reserva.findById(id);
   }
@@ -70,6 +118,7 @@ function crearServicioReservas() {
 
   return {
     listar,
+    consultar,
     obtenerPorId,
     contar,
     crear,
